@@ -23,6 +23,7 @@ import {
   extOf, embedFonts, extractFonts, createIdbFonts,
 } from './fonts.mjs'
 import { createObservable, createHistory, createStorage, loadJSON, saveJSON } from './store.mjs'
+import { sceneStamp, presetOverridesSaved } from './preset.mjs'
 // 默认预设场景：仓库根 gal-scene.json（编辑器导出的格式，内嵌被引用的素材/字体）。
 import presetScene from '../../gal-scene.json'
 
@@ -32,6 +33,7 @@ export const name = 'gal-view'
 export const inject = ['slots']
 
 const PERSIST_KEY = 'gal-view:scene:v1'
+const PRESET_STAMP_KEY = 'gal-view:preset-stamp'
 const ENABLED_KEY = 'gal-view:enabled'
 const HISTORY_LIMIT = 100
 
@@ -479,13 +481,22 @@ export function apply(ctx) {
     }
   }
   const presetBase = () => (hasPreset ? (normalizeScene(presetScene) ?? defaultScene()) : defaultScene())
+  // 预设戳：换了背景图 / 改了对话框几何后，bundle 里的预设就变了。
+  // 本地存档的戳跟不上预设时按预设重建，否则用户会一直停在旧画面上。
+  const presetStamp = hasPreset ? sceneStamp(presetScene) : null
   const savedScene = loadJSON(storage, PERSIST_KEY)
-  const usePreset = hasPreset && savedScene === null
+  const savedStamp = loadJSON(storage, PRESET_STAMP_KEY)
+  const usePreset = presetOverridesSaved(presetStamp, savedStamp, savedScene)
   // 迁移：旧场景补「台词」、双名牌与四个预设功能按钮（幂等）。
   const initial = ensureActionButtons(ensureSpeakerNames(ensureDialogueText(
     (usePreset ? presetBase() : normalizeScene(savedScene)) ?? defaultScene(),
   )))
-  if (usePreset) seedPresetAssets()
+  if (usePreset) {
+    seedPresetAssets()
+    // 记住这次落地的预设戳：之后用户自己的编辑不会被同一份预设冲掉。
+    saveJSON(storage, PRESET_STAMP_KEY, presetStamp)
+    saveJSON(storage, PERSIST_KEY, initial)
+  }
   const sceneSource = createObservable(initial)
   const history = createHistory(HISTORY_LIMIT)
   const historySource = createObservable({ undo: 0, redo: 0 })

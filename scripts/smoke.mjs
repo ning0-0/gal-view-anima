@@ -12,7 +12,7 @@ import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const ROOT = resolve(import.meta.dirname, '..')
-const CHECKOUT = process.env.DSH_CHECKOUT ?? resolve('C:/Users/Administrator/deepseek-harness')
+const CHECKOUT = process.env.DSH_CHECKOUT ?? resolve(ROOT, '..')
 const CLIENT_JS = join(ROOT, '.dsh-plugin', 'client.js')
 
 function resolveOptional(spec) {

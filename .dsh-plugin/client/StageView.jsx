@@ -25,14 +25,36 @@ const HANDLES = [
   { dir: 'w', cursor: 'ew-resize', style: { left: -5, top: 'calc(50% - 5px)' } },
 ]
 
-/** 角色占位立绘：几何剪影（头 + 肩身）+ 标签牌；有素材时显示真实立绘。说话时加光晕。 */
-function CharacterPlaceholder({ el, speaking, asset }) {
+/** 角色占位立绘：几何剪影（头 + 肩身）+ 标签牌；有素材时显示真实立绘。说话时加光晕。
+ * 游戏模式下 pose 会覆盖元素自带素材（姿态切换），交叉淡入 520ms；face 是表情气泡。 */
+function CharacterPlaceholder({ el, speaking, asset, pose }) {
   const c = el.character ?? {}
   const color = c.color ?? el.color ?? '#9b8cff'
+  const poseUrl = pose !== null && pose !== undefined && typeof pose.url === 'string' && pose.url !== '' ? pose.url : null
+  const src = poseUrl ?? (asset !== null && asset !== undefined ? asset.dataUrl : null)
+  const faceUrl = pose !== null && pose !== undefined && typeof pose.faceUrl === 'string' && pose.faceUrl !== '' ? pose.faceUrl : null
+
+  // 交叉淡入：旧图留在下层 520ms 再摘掉，避免切换瞬间透出背景。
+  const [shown, setShown] = useState(src)
+  const [leaving, setLeaving] = useState(null)
+  useEffect(() => {
+    if (src === shown) return
+    setLeaving(shown)
+    setShown(src)
+    const timer = setTimeout(() => setLeaving(null), 520)
+    return () => { clearTimeout(timer) }
+  }, [src, shown])
+
   return (
     <div className={'gv-char' + (speaking ? ' is-speaking' : '')} aria-hidden="true">
-      {asset !== null && asset !== undefined
-        ? <img className="gv-char-img" src={asset.dataUrl} alt={c.label ?? ''} draggable={false} />
+      {src !== null && src !== undefined
+        ? (
+            <>
+              {leaving !== null && leaving !== undefined && <img className="gv-char-img is-leaving" src={leaving} alt="" draggable={false} />}
+              <img className="gv-char-img is-pose" src={shown ?? src} alt={c.label ?? ''} draggable={false} />
+              {faceUrl !== null && <img className="gv-char-face" src={faceUrl} alt="" draggable={false} />}
+            </>
+          )
         : (
             <svg className="gv-char-svg" viewBox="0 0 100 170" preserveAspectRatio="xMidYMax meet">
               <circle cx="50" cy="30" r="20" fill={color} fillOpacity=".34" stroke={color} strokeOpacity=".85" strokeWidth="1.4" />
@@ -53,7 +75,7 @@ function CharacterPlaceholder({ el, speaking, asset }) {
 
 /** 各类型元素的静态主体（游戏/编辑共用；对话框在游戏模式单独渲染实时台词）。
  * 有素材时：background/形状类隐藏占位水印（真实图片作为背景铺满）。 */
-function ElementBody({ el, mode, speaking, asset }) {
+function ElementBody({ el, mode, speaking, asset, pose }) {
   const hasAsset = asset !== null && asset !== undefined
   switch (el.type) {
     case 'background': return (
@@ -62,7 +84,7 @@ function ElementBody({ el, mode, speaking, asset }) {
         {(!hasAsset || el.text !== '') && <span className="gv-elbg-label">{el.text !== '' ? el.text : 'BACKGROUND'}</span>}
       </div>
     )
-    case 'character': return <CharacterPlaceholder el={el} speaking={speaking} asset={asset} />
+    case 'character': return <CharacterPlaceholder el={el} speaking={speaking} asset={asset} pose={pose} />
     case 'dialogue': return (
       <div className="gv-elbox">
         <span className="gv-elbox-name" style={{ color: el.color }}>角色名</span>
@@ -223,7 +245,7 @@ function SelectionOverlay({ el, onBeginGesture }) {
  * @param props.onAction - 透明按钮功能回调（游戏模式；history/auto/skip/settings）。
  * @param props.autoOn - 自动播放开关状态（透明「自动」按钮的 is-on 视觉）。
  */
-export function StageView({ scene, assetsMap, mode, line, type, running, pinned, selectedId, onSelect, api, onSkip, onTextClick, hasNextPage, aiStatus, onAction, autoOn }) {
+export function StageView({ scene, assetsMap, mode, line, type, running, pinned, selectedId, onSelect, api, onSkip, onTextClick, hasNextPage, aiStatus, onAction, autoOn, bgImage, bgGhost, bgGhostKey, bgSlot, pose }) {
   const wrapRef = useRef(null)
   const stageRef = useRef(null)
   const gesture = useRef(null)
@@ -358,8 +380,16 @@ export function StageView({ scene, assetsMap, mode, line, type, running, pinned,
     if (g.changed && api !== undefined) api.commitHistory(g.before)
   }
 
+  // 铺满视窗：游戏模式下把当前底画铺到整块舞台区（16:9 舞台居中浮在上面），
+  // 边缘那一圈用同一张图 + 柔化暗角，不再露出奶油底。
+  const bleeded = mode === 'game' && typeof bgImage === 'string' && bgImage !== ''
   return (
-    <div className="gv-stage-wrap" ref={wrapRef}>
+    <div
+      className={'gv-stage-wrap' + (bleeded ? ' is-bleed' : '')}
+      ref={wrapRef}
+      style={bleeded ? { backgroundImage: 'url("' + bgImage + '")' } : undefined}
+    >
+      {bleeded && <div className="gv-bleed-scrim" aria-hidden="true" />}
       <div
         className={'gv-stage' + (editor ? ' is-editor' : '')}
         ref={stageRef}
@@ -368,6 +398,7 @@ export function StageView({ scene, assetsMap, mode, line, type, running, pinned,
         onPointerUp={editor ? endGesture : undefined}
         onPointerCancel={editor ? endGesture : undefined}
         onPointerDown={editor ? () => { if (onSelect) onSelect(null) } : undefined}
+        data-bg-slot={typeof bgSlot === 'string' && bgSlot !== '' ? bgSlot : undefined}
         data-scale={scale > 0 ? Math.round(scale * 100) / 100 : 0}
       >
         {editor && scene.settings.showGrid && (
@@ -384,11 +415,14 @@ export function StageView({ scene, assetsMap, mode, line, type, running, pinned,
         {renderElements.map(el => {
           const asset = assetOf(el)
           const baseStyle = elementStyle(el)
+          // 背景层可被「变化规则」接管：bgImage 优先于元素自带素材（只作用于游戏模式）。
+          const swapUrl = el.type === 'background' && mode === 'game' && typeof bgImage === 'string' && bgImage !== '' ? bgImage : null
           // 素材铺满元素盒（角色除外：立绘在内部用 <img> 底部对齐渲染）。
-          const style = asset !== null && el.type !== 'character'
+          const fillUrl = swapUrl ?? (asset !== null && el.type !== 'character' ? asset.dataUrl : null)
+          const style = fillUrl !== null
             ? {
               ...baseStyle,
-              backgroundImage: 'url("' + asset.dataUrl + '")',
+              backgroundImage: 'url("' + fillUrl + '")',
               backgroundSize: 'cover',
               backgroundPosition: 'center',
             }
@@ -399,6 +433,7 @@ export function StageView({ scene, assetsMap, mode, line, type, running, pinned,
               className={'gv-el gv-el-' + el.type + (el.locked ? ' is-locked' : '') + (editor && !el.locked ? ' is-pickable' : '') + (mode === 'game' && el.type === 'action-button' && el.action === 'auto' && autoOn ? ' is-on' : '')}
               style={style}
               data-el-id={el.id}
+              data-pose={el.type === 'character' && mode === 'game' && pose !== null && pose !== undefined && typeof pose.name === 'string' && pose.name !== '' ? pose.name : undefined}
               title={editor ? el.name : undefined}
               onPointerDown={editor && !el.locked && el.type !== 'background'
                 ? e => beginGesture(e, el, 'move', null)
@@ -407,7 +442,16 @@ export function StageView({ scene, assetsMap, mode, line, type, running, pinned,
                 ? () => onAction(el.action)
                 : undefined}
             >
-              <ElementBody el={el} mode={mode} asset={asset} speaking={mode === 'game' && line !== null && line.kind === 'assistant' && el.id === scene.settings.assistantSpeaker} />
+              <ElementBody el={el} mode={mode} asset={asset} pose={el.type === 'character' && mode === 'game' ? pose : null} speaking={mode === 'game' && line !== null && line.kind === 'assistant' && el.id === scene.settings.assistantSpeaker} />
+              {swapUrl !== null && typeof bgGhost === 'string' && bgGhost !== '' && (
+                // 上一张底画压在上面淡出 → 新旧交替是交叉淡入，不是硬切。
+                <span
+                  key={bgGhostKey}
+                  className="gv-bgghost"
+                  style={{ backgroundImage: 'url("' + bgGhost + '")' }}
+                  aria-hidden="true"
+                />
+              )}
             </div>
           )
         })}

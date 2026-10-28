@@ -1,2 +1,10 @@
 node_modules/
 *.log
+
+# 构建/生成中间产物
+.tmpbuild/
+.tmpbg/
+
+# 系统垃圾
+.DS_Store
+Thumbs.db

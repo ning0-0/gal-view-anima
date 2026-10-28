@@ -5,12 +5,16 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { StageView } from './StageView.jsx'
+import { normalizeBgPool, pickBackground } from './bg.mjs'
+import { normalizePosePool, normalizeFacePool, matchPoseByText, pickFace, assetOf } from './pose.mjs'
+import { PendingPanel } from './PendingPanel.jsx'
+import { isPending } from './pending.mjs'
+import { splitPages, createFitsMeasurer } from './paging.mjs'
 import { Editor } from './Editor.jsx'
 import { createTypeState, setTarget, skip, advance, SPEEDS } from './typewriter.mjs'
 import {
   nodesToLines, partialToText, deriveStatus, speakerFor, welcomeLine,
 } from './transcript.mjs'
-import { splitPages, createFitsMeasurer } from './paging.mjs'
 
 /** 玩家消息完整显示后的最短滞留时长（此后由模型状态触发翻页）。 */
 const STATUS_DWELL_MS = 1500
@@ -62,6 +66,12 @@ function HistoryPanel({ scene, lines, onClose }) {
   )
 }
 
+/** 说话角色下拉文案：优先角色名 → 元素名 → 角色键（预设里常把名牌清空，避免出现空括号）。 */
+function optionLabel(el) {
+  const name = el.character.name !== '' ? el.character.name : (el.name !== '' ? el.name : el.character.key)
+  return el.character.label !== '' ? name + '（' + el.character.label + '）' : name
+}
+
 /** 设置浮层：说话角色 / 玩家名 / 打字速度。开时快照、关时提交历史。 */
 function SettingsPanel({ scene, api, onClose }) {
   const beforeRef = useRef(null)
@@ -91,7 +101,7 @@ function SettingsPanel({ scene, api, onClose }) {
           onChange={e => api.updateSettings({ assistantSpeaker: e.target.value })}
         >
           {characters.map(el => (
-            <option key={el.id} value={el.id}>{el.character.name}（{el.character.label}）</option>
+            <option key={el.id} value={el.id}>{optionLabel(el)}</option>
           ))}
           <option value="">系统</option>
         </select>
@@ -141,11 +151,17 @@ function useFillSessionArea(rootRef) {
     scrollBody.style.overflow = 'hidden'
     scrollBody.style.position = 'relative'
     root.setAttribute('data-gal-fills', '')
+    // 防御：官方提问卡（QuestionComposer）若挂在输入席之外，GAL 激活时一并隐藏，
+    // 否则会从半透明对话框下透出官方卡片。卸载时恢复。
+    const questionCards = Array.from(document.querySelectorAll('[data-question-key]'))
+    const savedCards = questionCards.map(el => [el, el.style.display])
+    questionCards.forEach(el => { el.style.display = 'none' })
     return () => {
       seat.style.display = prev.seatDisplay
       scrollBody.style.overflow = prev.overflow
       scrollBody.style.position = prev.position
       root.removeAttribute('data-gal-fills')
+      savedCards.forEach(([el, display]) => { el.style.display = display })
     }
   }, [rootRef])
 }
@@ -154,19 +170,34 @@ function useFillSessionArea(rootRef) {
  * GAL 视窗组件（conversation.view 槽位条目）。
  * @param props - 槽位框架注入：sessionId/useSession/useInput/inputActions + inject 面的 useScene/useHistory/api。
  */
-export function GalView({ useSession, inputActions, useScene, useHistory, useAssets, useFonts, useStore, actions, api }) {
+export function GalView(props) {
+  const { useSession, inputActions, useScene, useHistory, useAssets, useFonts, useStore, actions, api, useTrajectory, useSessionStatus, sessionId } = props
   const scene = useScene(s => s)
   const history = useHistory(h => h)
   const assets = useAssets(a => a)
   const fonts = useFonts(f => f)
   const readState = useStore(s => s)
-  const nodes = useSession(s => s.nodes)
-  const partial = useSession(s => s.partial)
-  const running = useSession(s => s.running)
-  const blank = useSession(s => s.blank)
-  const runningCalls = useSession(s => s.runningCalls)
-  const pending = useSession(s => s.pending)
-  const promptError = useSession(s => s.promptError)
+  // 转录来源：本机桌面版把事件日志挂在 useTrajectory().eventNodes（与旧版 useSession().nodes 不同）。
+  const tropes = useTrajectory(t => t)
+  const nodes = tropes === null || tropes === undefined ? undefined : tropes.eventNodes
+  const partial = tropes === null || tropes === undefined ? undefined : tropes.partial
+  const runningCalls = tropes === null || tropes === undefined ? undefined : tropes.runningCalls
+  const running = useSession(s => s && s.running)
+  const blank = useSession(s => s && s.blank)
+  // 待决交互（批准 / 提问 / 计划审批）：与官方「对话」栏的卡片同源 ——
+  // Session 状态快照里的 pendingInteraction（见 dsh-client-ui-conversation 的
+  // conversation.composer select 钩子）。本机没有 useSessionPendingInteraction。
+  const pendingInteraction = useSessionStatus((snapshot) => {
+    if (typeof sessionId !== "string" || sessionId === "") return undefined
+    if (snapshot === null || typeof snapshot.get !== "function") return undefined
+    const status = snapshot.get(sessionId)
+    if (status === null || status === undefined || typeof status !== "object") return undefined
+    return status.pendingInteraction
+  })
+  // 下游沿用「待决列表」形状（状态推导/输入行让位都按数组判断）。
+  const pending = useMemo(() => (isPending(pendingInteraction) ? [pendingInteraction] : []), [pendingInteraction])
+  const waiting = pending.length > 0
+  const promptError = useSession(s => s && s.promptError)
 
   const [mode, setMode] = useState('game')
   const [auto, setAuto] = useState(false)
@@ -267,9 +298,9 @@ export function GalView({ useSession, inputActions, useScene, useHistory, useAss
     && !capturedLanded
     && (lastLine === null || lastLine.kind === 'player')
   // 状态页：换页后的独立一页——空文本 + 状态行作为正文，名牌为 AI。
-  // 流式生成阶段（liveText 非空）也强制走状态页：正文不实时渲染，
-  // 定稿（running=false）后才进入回复渲染（打字机/分页）。
-  const showStatusPage = running && (liveText !== '' || statusHold || pendingPlayer === null)
+  // 【本仓库改动】正文一旦有内容就直接边生成边显示（打字机实时追），
+  // 不再等定稿：只有「还没有任何正文」时才留在状态页（思考中/编写代码中）。
+  const showStatusPage = running && liveText === '' && (statusHold || pendingPlayer === null)
   const currentLine = showStatusPage
     ? { key: 'live', kind: 'assistant', text: '' }
     : running
@@ -304,7 +335,7 @@ export function GalView({ useSession, inputActions, useScene, useHistory, useAss
         fontSize: dtextSceneEl.fontSize,
         fontFamily: dtextSceneEl.fontFamily,
       })
-      const nextPages = splitPages(currentLine.text, prefix => measurer.fits(prefix))
+      const nextPages = splitPages(currentLine.text, prefix => measurer.fits(prefix + '…'))
       measurer.dispose()
       if (cancelled) return
       restorePendingRef.current = false
@@ -478,6 +509,90 @@ export function GalView({ useSession, inputActions, useScene, useHistory, useAss
     }
   }, [skipTyping])
 
+  // ---- 背景变化规则：时段 / 会话状态 / 台词关键词 → 自动换底画（交叉淡入） ----
+  // 池子来自场景 settings.bgPool；规则见 bg.mjs（纯函数，可单测）。
+  const bgPool = useMemo(() => normalizeBgPool(scene.settings.bgPool), [scene.settings.bgPool])
+  const [bgClock, setBgClock] = useState(() => Date.now())
+  const [bgId, setBgId] = useState(null)
+  const [bgPrev, setBgPrev] = useState(null)
+  const [bgGhostKey, setBgGhostKey] = useState(0)
+  const bgSwitchAt = useRef(0)
+  useEffect(() => {
+    // 每分钟重新对一次钟：跨过「黄昏 → 夜里」这类边界时不用等用户说话。
+    const timer = setInterval(() => setBgClock(Date.now()), 60000)
+    return () => { clearInterval(timer) }
+  }, [])
+  const bgText = currentLine !== null && typeof currentLine.text === 'string' ? currentLine.text : ''
+  const bgError = currentLine !== null && currentLine.error === true
+  useEffect(() => {
+    if (bgPool.length === 0) return
+    const hit = pickBackground(bgPool, {
+      now: bgClock,
+      text: bgText,
+      error: bgError,
+      waiting: waiting,
+      current: bgId,
+      lastSwitchAt: bgSwitchAt.current,
+      minDwellMs: Math.max(0, Number(scene.settings.bgDwellSec) || 0) * 1000,
+    })
+    if (hit === null || hit.asset === bgId) return
+    bgSwitchAt.current = bgClock
+    setBgPrev(bgId)
+    setBgGhostKey(key => key + 1)
+    setBgId(hit.asset)
+  }, [bgPool, bgClock, bgText, bgError, waiting, bgId, scene.settings.bgDwellSec])
+  useEffect(() => {
+    // 淡出层只为动画存在 1s，之后摘掉省内存。
+    if (bgPrev === null) return
+    const timer = setTimeout(() => setBgPrev(null), 1000)
+    return () => { clearTimeout(timer) }
+  }, [bgPrev, bgGhostKey])
+  const bgUrlOf = id => {
+    if (id === null || assets.map === undefined) return ''
+    const record = assets.map.get(id)
+    return record !== null && record !== undefined && typeof record.dataUrl === 'string' ? record.dataUrl : ''
+  }
+  const bgSlot = useMemo(() => {
+    if (bgId === null) return null
+    const hit = bgPool.find(item => item.asset === bgId)
+    return hit !== undefined && hit !== null ? hit.slot : null
+  }, [bgPool, bgId])
+
+  // ---- 立绘姿态：最新台词命中 posePool 的标签 → 演一小段动作（poseHoldMs 后回到站姿） ----
+  // 与背景不同，姿态是临时的：说完「晚安」她趴下睡十几秒，然后自己站起来。
+  const posePool = useMemo(() => normalizePosePool(scene.settings.posePool), [scene.settings.posePool])
+  const facePool = useMemo(() => normalizeFacePool(scene.settings.facePool), [scene.settings.facePool])
+  const [poseName, setPoseName] = useState(null)
+  const [poseSince, setPoseSince] = useState(0)
+  const [faceId, setFaceId] = useState(null)
+  useEffect(() => {
+    if (posePool.length === 0 && facePool.length === 0) return
+    const hit = matchPoseByText(posePool, bgText)
+    if (hit !== null && hit.pose !== poseName) {
+      setPoseName(hit.pose)
+      setPoseSince(Date.now())
+    }
+    const faceHit = pickFace(facePool, bgText)
+    if (faceHit !== null) setFaceId(faceHit)
+  }, [bgText, posePool, facePool])
+  useEffect(() => {
+    if (poseName === null) return
+    const holdMs = Math.max(1200, Number(scene.settings.poseHoldMs) || 14000)
+    const timer = setTimeout(() => setPoseName(null), holdMs)
+    return () => { clearTimeout(timer) }
+  }, [poseName, poseSince, scene.settings.poseHoldMs])
+  useEffect(() => {
+    if (faceId === null) return
+    const holdMs = Math.max(600, Number(scene.settings.faceHoldMs) || 6000)
+    const timer = setTimeout(() => setFaceId(null), holdMs)
+    return () => { clearTimeout(timer) }
+  }, [faceId, scene.settings.faceHoldMs])
+  const poseAssetId = poseName !== null ? assetOf(posePool, poseName) : null
+  const faceUrl = faceId !== null ? bgUrlOf(faceId) : ''
+  const charPose = { name: poseName, url: poseAssetId !== null ? bgUrlOf(poseAssetId) : '', faceUrl }
+  const bgUrl = bgUrlOf(bgId)
+  const bgGhostUrl = bgUrlOf(bgPrev)
+
   const line = currentLine !== null ? { ...currentLine, speaker } : null
 
   return (
@@ -539,10 +654,15 @@ export function GalView({ useSession, inputActions, useScene, useHistory, useAss
               aiStatus={running ? (showStatusPage ? aiStatus : null) : (currentLine !== null && currentLine.error === true ? null : aiStatus)}
               onAction={handleAction}
               autoOn={auto}
+              bgImage={bgUrl}
+              bgGhost={bgGhostUrl}
+              bgGhostKey={bgGhostKey}
+              bgSlot={bgSlot}
             />
+            <PendingPanel pending={pending.length > 0 ? pending[0] : undefined} />
           </div>
           <form
-            className="gv-input"
+            className={waiting ? 'gv-input is-waiting' : 'gv-input'}
             onSubmit={e => {
               e.preventDefault()
               send()

@@ -14,6 +14,9 @@
 // 元素类型：background | character | dialogue | dialogue-text | speaker-name | action-button | text | image | button
 // 历史类型 rect/circle/decoration 已从添加菜单移除（合并为 image），存量场景仍保留渲染兼容。
 
+import { normalizeBgPool } from './bg.mjs'
+import { normalizePosePool, normalizeFacePool } from './pose.mjs'
+
 export const SCENE_VERSION = 1
 export const STAGE_W = 960
 export const STAGE_H = 540
@@ -75,6 +78,8 @@ export function defaultSettings() {
     assistantSpeaker: 'char-a',
     playerName: '你',
     typeSpeed: 'normal',
+    bgPool: [],
+    bgDwellSec: 45,
     welcome: ['……测试连接已经建立。', '这里是一个用于测试 AI 对话系统的 Galgame 场景。'],
   }
 }
@@ -318,6 +323,12 @@ export function normalizeSettings(raw) {
     assistantSpeaker: toString(raw.assistantSpeaker, base.assistantSpeaker),
     playerName: toString(raw.playerName, base.playerName) || '你',
     typeSpeed: ['slow', 'normal', 'fast'].includes(raw.typeSpeed) ? raw.typeSpeed : base.typeSpeed,
+    bgPool: normalizeBgPool(raw.bgPool),
+    bgDwellSec: Math.min(3600, Math.max(0, toNumber(raw.bgDwellSec, base.bgDwellSec))),
+    posePool: normalizePosePool(raw.posePool),
+    facePool: normalizeFacePool(raw.facePool),
+    poseHoldMs: Math.min(600000, Math.max(0, toNumber(raw.poseHoldMs, base.poseHoldMs))),
+    faceHoldMs: Math.min(600000, Math.max(0, toNumber(raw.faceHoldMs, base.faceHoldMs))),
     welcome: Array.isArray(raw.welcome)
       ? raw.welcome.filter(line => typeof line === 'string').slice(0, 8)
       : base.welcome,

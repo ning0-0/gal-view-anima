@@ -87,6 +87,7 @@ export function createFitsMeasurer(box) {
     'box-sizing: border-box;',
     'padding: 2px 10px;',
     'line-height: 1.8;',
+    'letter-spacing: .02em;',
     'white-space: pre-wrap;',
     'word-break: break-word;',
     'overflow: hidden;',

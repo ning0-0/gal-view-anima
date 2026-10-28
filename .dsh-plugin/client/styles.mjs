@@ -138,11 +138,17 @@ export const CSS = `
 /* 透明功能按钮：游戏模式可点击（元素级交互，无悬停高亮）。 */
 [data-gal-mode='game'] .gv-el-action-button { pointer-events: auto; cursor: pointer; }
 .gv-el-action-button.is-on { border-color: var(--gv-accent); background: rgba(143, 123, 255, .14); color: #fff; }
+/* 浅色皮肤下的「自动」开启态：沿用元素自身文字色，避免白字落在奶油底上不可读。 */
+.gv-el-action-button.is-on { border-color: rgba(31, 111, 178, .55); background: rgba(31, 111, 178, .14); color: inherit; }
 .gv-stage.is-editor .gv-el.is-pickable:hover { outline: 1px solid rgba(143, 123, 255, .55); outline-offset: 1px; }
 .gv-el.is-locked { cursor: not-allowed; }
 
 /* 背景占位 */
 .gv-elbg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: inherit; overflow: hidden; }
+/* 背景交叉淡入：上一张压在新图上方淡出，避免硬切。 */
+.gv-bgghost { position: absolute; inset: 0; background-size: cover; background-position: center; pointer-events: none; animation: gv-bgfade 900ms ease forwards; }
+@keyframes gv-bgfade { from { opacity: 1; } to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .gv-bgghost { animation-duration: 1ms; } }
 .gv-elbg-label {
   font-size: inherit; letter-spacing: .5em; text-indent: .5em; opacity: .4; color: inherit;
   text-shadow: 0 1px 12px rgba(0, 0, 0, .5);
@@ -175,6 +181,8 @@ export const CSS = `
 }
 .gv-char-label { font-size: 10px; letter-spacing: .28em; color: var(--gv-text-dim); }
 .gv-char-name { font-size: 12px; font-weight: 600; }
+/* 立绘标签牌留空时整体隐藏（干净的全幅立绘，不留空壳边框）。 */
+.gv-char-plate:has(.gv-char-label:empty):has(.gv-char-name:empty) { display: none; }
 
 /* 编辑器里的对话框静态样式 */
 .gv-elbox { position: absolute; inset: 0; display: flex; flex-direction: column; padding: 14px 18px 12px 30px; overflow: hidden; }
@@ -206,6 +214,54 @@ export const CSS = `
 }
 /* 游戏模式对话区不渲染任何悬停/聚焦高亮（点击跳过打字无需视觉反馈边框）。 */
 .gv-dialogue:focus, .gv-dtext:focus { outline: none; }
+/* 浅色场景：对话框浮在插画上的投影（深色场景同样成立，不影响可读性）。 */
+[data-gal-mode='game'] .gv-dialogue { box-shadow: 0 18px 46px rgba(38, 30, 18, .28); }
+/* 浅色场景：AI 状态行（思考中…）用中性墨色，避免浅色底上看不清。 */
+[data-gal-mode='game'] .gv-dtext-status { color: #6b6a66; }
+/* 浅色场景：立绘换成暖调柔和投影，避免默认 50% 黑投影在亮底上留下黑边。
+ * --gv-char-tone 由舞台的 data-bg-slot 决定（夜间/黄昏/雨天按场景调色），
+ * 让立绘跟着背景的色温走，避免夜里人物还是白天打光那种「贴纸感」。 */
+[data-gal-mode='game'] .gv-char-img,
+[data-gal-mode='game'] .gv-char-svg {
+  filter: var(--gv-char-tone, none) drop-shadow(0 2px 3px rgba(38, 30, 20, .22)) drop-shadow(0 16px 30px rgba(45, 35, 22, .34));
+}
+[data-gal-mode='game'] .gv-stage[data-bg-slot='dawn'] { --gv-char-tone: brightness(1.02) saturate(1.03) sepia(.05); }
+[data-gal-mode='game'] .gv-stage[data-bg-slot='day'] { --gv-char-tone: brightness(1.01) saturate(1.05) sepia(.06); }
+[data-gal-mode='game'] .gv-stage[data-bg-slot='dusk'] { --gv-char-tone: brightness(.97) saturate(1.04) sepia(.10); }
+[data-gal-mode='game'] .gv-stage[data-bg-slot='night'] { --gv-char-tone: brightness(.82) saturate(.90) hue-rotate(-6deg); }
+[data-gal-mode='game'] .gv-stage[data-bg-slot='rain'] { --gv-char-tone: brightness(.93) saturate(.84) hue-rotate(5deg); }
+/* 立绘背后压一个极淡的柔光暗角：浅背景（书架/白墙/窗光）上把角色托出来，
+ * 不做硬边光晕，避免像贴纸贴上去。 */
+[data-gal-mode='game'] .gv-el-character::before {
+  content: '';
+  position: absolute;
+  inset: -8% -6% -4% -6%;
+  border-radius: 50%;
+  background: radial-gradient(56% 50% at 50% 48%, rgba(34, 40, 56, .26), rgba(34, 40, 56, 0) 74%);
+  pointer-events: none;
+  z-index: 0;
+}
+[data-gal-mode='game'] .gv-el-character .gv-char { position: relative; z-index: 1; width: 100%; height: 100%; }
+/* 脚下的椭圆投影：把人物「放」在地面上，而不是浮在背景前。
+ * 位置用 --gv-char-shadow-* 可调（相对角色元素盒子）：默认贴在立绘脚底、对话纸上沿之上。
+ * 双层（内核实、外圈虚）+ 高斯模糊，避免出现一圈生硬的灰饼。 */
+[data-gal-mode='game'] .gv-el-character::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: var(--gv-char-shadow-bottom, 0px);
+  width: var(--gv-char-shadow-w, 106%);
+  height: var(--gv-char-shadow-h, 56px);
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background:
+    radial-gradient(62% 60% at 50% 40%, rgba(20, 14, 8, .54), rgba(20, 14, 8, 0) 78%),
+    radial-gradient(closest-side, rgba(28, 20, 12, .34), rgba(28, 20, 12, 0) 80%);
+  filter: blur(8px);
+  opacity: var(--gv-char-shadow-o, 1);
+  pointer-events: none;
+  z-index: 0;
+}
 /* 独立「说话人」元素：文本框类型（默认纯文本外观，可自行加背景/边框），
  * 游戏模式动态显示当前台词行的说话人（你/DeepSeek/隐藏）。 */
 .gv-sname {
@@ -261,6 +317,7 @@ export const CSS = `
  * 编辑模式用「工具栏 40px + 占位条 44px」对齐这里的 84px，
  * 保证两种模式的舞台槽位尺寸严格一致 → WYSIWYG。 */
 .gv-input { flex: none; height: 84px; display: flex; gap: 10px; align-items: stretch; padding: 8px 16px 10px; }
+.gv-input.is-waiting { visibility: hidden; }
 .gv-input-box {
   flex: 1 1 auto; resize: none;
   background: rgba(10, 13, 28, .72);
@@ -275,6 +332,125 @@ export const CSS = `
 .gv-input-box:focus { border-color: rgba(143, 123, 255, .6); box-shadow: 0 0 0 1px rgba(143, 123, 255, .25), 0 0 16px rgba(143, 123, 255, .12); }
 .gv-input-box::placeholder { color: var(--gv-text-dim); }
 .gv-send { align-self: stretch; min-width: 84px; }
+
+/* ---------- 游戏模式：AnimaVN 纸质外框（顶栏 / 模式切换 / 输入行 / 历史浮层 / 舞台留白） ----------
+ * 舞台里是手绘插画 + 奶油纸对话框，外框若仍是旧深蓝玻璃就会「里外两种皮肤」。
+ * 这里把游戏模式的外框整体换成同一套纸质语言：奶油底、发丝边、藏蓝强调、圆角胶囊按钮。
+ * 编辑模式保持原来的深色工作台（工具属性面板需要高对比度）。 */
+[data-gal-mode='game'] {
+  --gv-accent: #1f6fb2;
+  --gv-accent-2: #2a7cbe;
+  --gv-text: #1e222a;
+  --gv-text-dim: #6b6a66;
+  background: linear-gradient(180deg, #f7f2e8, #eee6d6);
+  color: #1e222a;
+}
+[data-gal-mode='game'] .gv-topbar {
+  border-bottom: 1px solid rgba(122, 108, 88, .24);
+  background: linear-gradient(180deg, rgba(252, 249, 243, .97), rgba(246, 240, 229, .93));
+}
+[data-gal-mode='game'] .gv-brand {
+  color: #1e222a;
+  font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", SimSun, serif;
+  letter-spacing: .18em;
+}
+[data-gal-mode='game'] .gv-brand-mark {
+  background: linear-gradient(135deg, #1f6fb2, #4a90d9);
+  box-shadow: 0 0 10px rgba(31, 111, 178, .32);
+}
+[data-gal-mode='game'] .gv-mode-switch {
+  border: 1px solid rgba(122, 108, 88, .28);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .62);
+  overflow: hidden;
+}
+[data-gal-mode='game'] .gv-mode-btn { color: #6b6a66; padding: 3px 16px; }
+[data-gal-mode='game'] .gv-mode-btn + .gv-mode-btn { border-left: 1px solid rgba(122, 108, 88, .20); }
+[data-gal-mode='game'] .gv-mode-btn:hover { color: #17466c; background: rgba(31, 111, 178, .08); }
+[data-gal-mode='game'] .gv-mode-btn.is-on {
+  color: #fff; box-shadow: none;
+  background: linear-gradient(180deg, #2a7cbe, #1f5c8f);
+}
+[data-gal-mode='game'] .gv-btn {
+  background: #e7eef7;
+  border: 1px solid rgba(31, 111, 178, .30);
+  border-radius: 999px;
+  color: #1f5c8f;
+  box-shadow: none;
+}
+[data-gal-mode='game'] .gv-btn:hover:not(:disabled) {
+  background: #dce8f6;
+  border-color: rgba(31, 111, 178, .45);
+  color: #17466c;
+  box-shadow: none;
+}
+[data-gal-mode='game'] .gv-stage-wrap { background: linear-gradient(180deg, #f4eddf, #e9e0ce); }
+/* 游戏模式裁到舞台边框：立绘底部对齐 + 浮动动画会溢出 16:9 舞台，
+ * 不裁的话脚会穿出舞台下沿、出现在对话框下面的留白里。 */
+[data-gal-mode='game'] .gv-stage { overflow: hidden; }
+/* 铺满视窗：底画 cover 到整块舞台区，16:9 舞台浮在中间；暗角 + 轻模糊把边缘压下去，视线仍在舞台内。 */
+.gv-stage-wrap.is-bleed {
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+.gv-bleed-scrim {
+  position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(118% 88% at 50% 46%, rgba(20, 16, 10, 0) 38%, rgba(20, 16, 10, .46) 100%);
+  backdrop-filter: blur(4px) saturate(.98) brightness(.9);
+}
+.gv-stage-wrap.is-bleed .gv-stage { z-index: 1; }
+[data-gal-mode='game'] .gv-stage { box-shadow: 0 0 0 1px rgba(122, 108, 88, .26), 0 20px 50px rgba(38, 30, 18, .22); }
+[data-gal-mode='game'] .gv-stage-wrap.is-bleed .gv-stage { box-shadow: 0 0 0 1px rgba(255, 255, 255, .10), 0 26px 70px rgba(18, 14, 8, .40); }
+[data-gal-mode='game'] .gv-input {
+  border-top: 1px solid rgba(122, 108, 88, .20);
+  background: linear-gradient(180deg, rgba(247, 242, 232, .94), rgba(240, 233, 220, .97));
+}
+[data-gal-mode='game'] .gv-input-box {
+  background: rgba(255, 255, 255, .94);
+  border: 1px solid rgba(122, 108, 88, .30);
+  border-radius: 10px;
+  color: #1e222a;
+  font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", SimSun, serif;
+  line-height: 1.7;
+}
+[data-gal-mode='game'] .gv-input-box::placeholder { color: #a09a8c; }
+[data-gal-mode='game'] .gv-input-box:focus {
+  border-color: rgba(31, 111, 178, .55);
+  box-shadow: 0 0 0 3px rgba(31, 111, 178, .10);
+}
+[data-gal-mode='game'] .gv-send {
+  background: linear-gradient(180deg, #2a7cbe, #1f5c8f);
+  border: 1px solid rgba(23, 70, 108, .42);
+  border-radius: 10px;
+  color: #fff;
+  font-weight: 600;
+  letter-spacing: .12em;
+}
+[data-gal-mode='game'] .gv-send:hover:not(:disabled) {
+  background: linear-gradient(180deg, #2f86cc, #25689c);
+  border-color: rgba(23, 70, 108, .55);
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(31, 92, 143, .26);
+}
+[data-gal-mode='game'] .gv-history {
+  background: rgba(250, 247, 240, .97);
+  border-left: 1px solid rgba(122, 108, 88, .28);
+  box-shadow: -18px 0 44px rgba(38, 30, 18, .18);
+  backdrop-filter: none;
+  color: #1e222a;
+}
+[data-gal-mode='game'] .gv-history-head {
+  border-bottom: 1px solid rgba(122, 108, 88, .22);
+  color: #1e222a;
+  font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", SimSun, serif;
+  letter-spacing: .22em;
+}
+[data-gal-mode='game'] .gv-history-row { border-bottom: 1px solid rgba(122, 108, 88, .16); }
+[data-gal-mode='game'] .gv-history-name { color: #1f5c8f; }
+[data-gal-mode='game'] .gv-history-text { color: #33322e; }
+[data-gal-mode='game'] .gv-history-empty { color: #8a8272; }
 
 /* ---------- 历史面板 ---------- */
 .gv-history {
@@ -529,8 +705,286 @@ export const CSS = `
 .gvsv-hint { flex: 1; font-size: 11px; opacity: .6; line-height: 1.6; }
 .gvsv-row input[type="checkbox"] { accent-color: #8f7bff; width: 16px; height: 16px; }
 
+/* ---------- AnimaVN 纸质皮肤：设置浮层与选择框（仅游戏模式） ---------- */
+[data-gal-mode='game'] .gv-settings {
+  width: 322px;
+  background: linear-gradient(180deg, rgba(250, 247, 240, .97), rgba(242, 236, 224, .96));
+  border: 1px solid rgba(122, 108, 88, .32);
+  border-radius: 14px;
+  box-shadow: 0 18px 46px rgba(38, 30, 18, .26);
+  color: #1e222a;
+  padding: 14px 18px 12px;
+}
+[data-gal-mode='game'] .gv-settings-head {
+  border-bottom: 1px solid rgba(122, 108, 88, .24);
+  color: #1e222a;
+  font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", SimSun, serif;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: .18em;
+}
+[data-gal-mode='game'] .gv-settings-row { color: #6b6a66; font-size: 12.5px; }
+[data-gal-mode='game'] .gv-settings-row select,
+[data-gal-mode='game'] .gv-settings-row input[type='text'] {
+  width: 180px;
+  background: rgba(255, 255, 255, .94);
+  border: 1px solid rgba(122, 108, 88, .30);
+  border-radius: 8px;
+  color: #1e222a;
+  font-size: 12.5px;
+  padding: 5px 10px;
+  outline: none;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+[data-gal-mode='game'] .gv-settings-row select:focus,
+[data-gal-mode='game'] .gv-settings-row input[type='text']:focus {
+  border-color: rgba(31, 111, 178, .55);
+  box-shadow: 0 0 0 3px rgba(31, 111, 178, .10);
+}
+[data-gal-mode='game'] .gv-settings-row option { background: #fbf8f2; color: #1e222a; }
+[data-gal-mode='game'] .gv-settings-hint { color: #8a8272; }
+[data-gal-mode='game'] .gv-settings .gv-btn {
+  background: #e7eef7;
+  border: 1px solid rgba(31, 111, 178, .30);
+  border-radius: 999px;
+  color: #1f5c8f;
+  padding: 3px 14px;
+}
+[data-gal-mode='game'] .gv-settings .gv-btn:hover:not(:disabled) {
+  background: #dce8f6;
+  border-color: rgba(31, 111, 178, .45);
+  box-shadow: none;
+  color: #17466c;
+}
+
+/* ---------- 待决交互（批准 / 提问）：纸质卡片 ---------- */
+.gv-stage-area { position: relative; }
+.gv-pending-layer {
+  position: absolute; inset: 0; z-index: 40;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+}
+.gv-pending-veil {
+  position: absolute; inset: 0;
+  background: radial-gradient(72% 62% at 50% 45%, rgba(20, 16, 10, .14), rgba(20, 16, 10, .38));
+  backdrop-filter: blur(1.5px) saturate(1.06);
+}
+.gv-pending-stack {
+  position: relative;
+  display: flex; flex-direction: column; gap: 12px;
+  width: min(680px, 92%); max-height: 100%;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+.gv-pending-card {
+  background: linear-gradient(180deg, rgba(250, 247, 240, .97), rgba(242, 236, 224, .96));
+  border: 1px solid rgba(122, 108, 88, .32);
+  border-radius: 14px;
+  padding: 22px 24px 18px;
+  box-shadow: 0 18px 46px rgba(38, 30, 18, .26), inset 0 0 0 1px rgba(255, 255, 255, .5);
+  color: #1e222a;
+  font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", SimSun, serif;
+  animation: gv-pending-in .18s ease-out;
+}
+/* 等待决定的强调边（批准/提问未答时）：金色细亮边。 */
+.gv-pending-card.is-awaiting {
+  border-color: rgba(190, 153, 82, .72);
+  box-shadow: 0 18px 46px rgba(38, 30, 18, .26), inset 0 0 0 1px rgba(214, 186, 128, .40);
+}
+@keyframes gv-pending-in {
+  from { opacity: 0; transform: translateY(6px) scale(.985); }
+  to { opacity: 1; transform: none; }
+}
+.gv-pending-head { display: flex; flex-direction: column; gap: 6px; }
+.gv-pending-eyebrow {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 10.5px; letter-spacing: .26em; text-transform: uppercase;
+  color: #8a8272;
+}
+.gv-pending-head-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.gv-pending-title {
+  margin: 0; font-size: 21px; font-weight: 600; line-height: 1.45;
+  color: #1e222a; letter-spacing: .01em;
+}
+.gv-pending-tag {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 11px; letter-spacing: .04em;
+  color: #7a5a22; background: rgba(197, 164, 104, .16);
+  border: 1px solid rgba(191, 154, 82, .40);
+  border-radius: 999px; padding: 2px 9px;
+}
+.gv-pending-detail { margin: 2px 0 0; font-size: 14.5px; line-height: 1.7; color: #4a4a46; }
+.gv-pending-reason {
+  margin: 4px 0 0; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 11.5px; line-height: 1.6; color: #7a7568; word-break: break-word;
+}
+.gv-pending-rule {
+  height: 1px; margin: 14px 0 12px;
+  background: linear-gradient(90deg, rgba(197, 164, 104, .04), rgba(197, 164, 104, .46), rgba(197, 164, 104, .04));
+}
+/* 选项区：整块列表，纸面本身不换色（只靠发丝分隔），选中才上茶金色。 */
+.gv-pending-options {
+  display: flex; flex-direction: column;
+  border: 1px solid rgba(122, 108, 88, .20);
+  border-radius: 10px;
+  background: rgba(255, 252, 245, .55);
+  overflow: hidden;
+}
+.gv-pending-option {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  font-family: inherit; font-size: 15.5px; line-height: 1.5;
+  color: #2a2925;
+  background: transparent;
+  border: none; border-top: 1px solid rgba(122, 108, 88, .14);
+  border-radius: 0;
+  padding: 11px 16px;
+  transition: background .14s ease, color .14s ease;
+}
+.gv-pending-option:first-child { border-top: none; }
+.gv-pending-option:hover:not(:disabled) { background: rgba(176, 138, 74, .10); }
+.gv-pending-option:disabled { opacity: .5; cursor: default; }
+.gv-pending-option.is-choice { position: relative; padding-left: 34px; }
+.gv-pending-option.is-choice::before {
+  content: ""; position: absolute; left: 15px; top: 50%;
+  width: 9px; height: 9px; margin-top: -4.5px;
+  border-radius: 50%; border: 1.5px solid rgba(122, 108, 88, .42);
+  transition: background .14s ease, border-color .14s ease, box-shadow .14s ease;
+}
+.gv-pending-option.is-choice.is-selected {
+  background: rgba(197, 164, 104, .22); color: #5c451f; font-weight: 600;
+  box-shadow: inset 3px 0 #bf9a52;
+}
+.gv-pending-option.is-choice.is-selected::before {
+  background: #b3893c; border-color: #b3893c;
+  box-shadow: 0 0 0 3px rgba(197, 164, 104, .26);
+}
+/* 批准卡的「允许一次」：不是整条实心色带，只给淡蓝底 + 左侧细竖线。 */
+.gv-pending-option.is-affirm {
+  color: #5c451f; font-weight: 600;
+  background: rgba(197, 164, 104, .16);
+  box-shadow: inset 3px 0 #bf9a52;
+}
+.gv-pending-option.is-affirm:hover:not(:disabled) { background: rgba(197, 164, 104, .26); }
+.gv-pending-answer { margin: 12px 0 0; padding: 0 2px; }
+.gv-pending-answer-input {
+  width: 100%; box-sizing: border-box;
+  font-family: inherit; font-size: 15px; color: #1e222a;
+  background: transparent;
+  border: none; border-bottom: 1px solid rgba(122, 108, 88, .30);
+  border-radius: 0; padding: 9px 2px;
+  outline: none;
+  transition: border-color .14s ease;
+}
+.gv-pending-answer-input::placeholder { color: #a09a8c; }
+.gv-pending-answer-input:focus { border-bottom-color: rgba(31, 111, 178, .55); }
+/* 脚部：左边两个文字链，右边一颗藏蓝胶囊（下一题 / 确定）。 */
+.gv-pending-foot {
+  display: flex; align-items: center; gap: 16px;
+  margin-top: 14px; padding-top: 12px;
+  border-top: 1px solid rgba(122, 108, 88, .18);
+}
+.gv-pending-link {
+  font-family: inherit; font-size: 13px; cursor: pointer;
+  color: #6b6a66; background: none; border: none; padding: 0;
+  border-bottom: 1px solid transparent;
+  transition: color .14s ease, border-color .14s ease;
+}
+.gv-pending-link:hover:not(:disabled) { color: #8a6222; border-bottom-color: rgba(191, 154, 82, .55); }
+.gv-pending-link:disabled { opacity: .5; cursor: default; }
+.gv-pending-submit {
+  margin-left: auto;
+  font-family: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer;
+  letter-spacing: .10em;
+  color: #2b2008; background: linear-gradient(180deg, #d3ad63, #b08a36);
+  border: 1px solid rgba(133, 100, 38, .50);
+  border-radius: 999px; padding: 7px 22px;
+  box-shadow: 0 6px 14px rgba(150, 115, 50, .26);
+  transition: background .14s ease, box-shadow .14s ease, transform .14s ease;
+}
+.gv-pending-submit:hover:not(:disabled) {
+  background: linear-gradient(180deg, #dcb872, #bb9440);
+  box-shadow: 0 8px 18px rgba(150, 115, 50, .32);
+}
+.gv-pending-submit:active:not(:disabled) { transform: translateY(1px); }
+.gv-pending-submit:disabled { opacity: .5; cursor: default; box-shadow: none; }
+.gv-pending-error {
+  margin: 10px 0 0; font-size: 12.5px; line-height: 1.6; color: #a8423a;
+}
+
+/* ---------------- 立绘姿态切换 / 表情气泡 ---------------- */
+/* 姿态图（scripts/set-poses.py 输出，统一 900x1500 画布）：交叉淡入，旧图留 520ms 垫底，
+ * 避免切换瞬间透出背景。 */
+[data-gal-mode='game'] .gv-el-character .gv-char-img.is-pose { animation: gv-pose-in .52s ease-out both; }
+[data-gal-mode='game'] .gv-el-character .gv-char-img.is-leaving {
+  animation: gv-pose-out .52s ease-out both;
+  pointer-events: none;
+}
+@keyframes gv-pose-in {
+  from { opacity: 0; transform: translateY(7px) scale(.994); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes gv-pose-out { from { opacity: 1; } to { opacity: 0; } }
+
+/* 表情气泡：说话时在她肩头飘一个小圆头像（6 个表情素材）。 */
+.gv-char-face {
+  position: absolute;
+  right: 0;
+  top: 5%;
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #fdfaf4;
+  border: 2px solid rgba(255, 255, 255, .9);
+  box-shadow: 0 8px 20px rgba(40, 30, 18, .3);
+  pointer-events: none;
+  z-index: 4;
+  animation: gv-face-in .34s cubic-bezier(.2, .9, .3, 1.2) both;
+}
+@keyframes gv-face-in {
+  from { opacity: 0; transform: scale(.72) translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* 坐/卧姿态的投影要更宽更低，Q 版更小 —— 否则脚下一小圈灰饼会显得人物悬浮。 */
+[data-gal-mode='game'] .gv-el-character[data-pose='kneel']::after,
+[data-gal-mode='game'] .gv-el-character[data-pose='curl']::after {
+  width: 80%;
+  height: 38px;
+  bottom: 30px;
+}
+[data-gal-mode='game'] .gv-el-character[data-pose='sleep']::after {
+  width: 96%;
+  height: 34px;
+  bottom: 24px;
+}
+[data-gal-mode='game'] .gv-el-character[data-pose='chibi']::after {
+  width: 46%;
+  height: 20px;
+  bottom: 26px;
+}
+/* 坐着时别再用站立那种上下浮动，换成很轻的呼吸。 */
+[data-gal-mode='game'] .gv-el-character[data-pose='kneel'] .gv-char,
+[data-gal-mode='game'] .gv-el-character[data-pose='curl'] .gv-char,
+[data-gal-mode='game'] .gv-el-character[data-pose='sleep'] .gv-char {
+  animation: gv-char-breathe 6.2s ease-in-out infinite;
+}
+@keyframes gv-char-breathe {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-3px) scale(1.004); }
+}
+[data-gal-mode='game'] .gv-el-character[data-pose='chibi'] .gv-char { animation: gv-char-bounce 2.6s ease-in-out infinite; }
+@keyframes gv-char-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   [data-gal-view] .gv-el-character .gv-char { animation: none; }
+  [data-gal-view] .gv-char-img.is-pose,
+  [data-gal-view] .gv-char-img.is-leaving,
+  [data-gal-view] .gv-char-face { animation: none; }
   [data-gal-view] .gv-dialogue-caret { animation: none; }
+  [data-gal-view] .gv-pending-card { animation: none; }
 }
 `
