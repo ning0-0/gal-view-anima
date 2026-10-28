@@ -56,6 +56,17 @@ dsh plugin --profile web remove gal-view
 > 说明：场景布局、素材图片、字体与阅读进度都保存在你的**浏览器**里（localStorage / IndexedDB），重装或卸载插件不会丢失；清除浏览器站点数据才会重置它们。
 
 
+## 致谢
+
+本视图是在下面这些作品之上长出来的，感谢它们各自的作者：
+
+- [Ayase34/gal-view](https://github.com/Ayase34/gal-view) —— **原版 GAL 视窗**：插件骨架、标签注入、场景编辑器、打字机与转录映射，以及本视图默认使用的**立绘**。
+- [RichardMLe/gal-view](https://github.com/RichardMLe/gal-view) —— 上游 fork 与维护，宿主取数/编排的参考实现。
+- [RichardMLe/dsh-deep-whale](https://github.com/RichardMLe/dsh-deep-whale) —— 深度鲸，鲸鲸系交互的起点。
+- [MeteorNOX/DeepSeek-Balance-Whale-Widget](https://github.com/MeteorNOX/DeepSeek-Balance-Whale-Widget) —— 鲸鱼形态挂件的设计参考。
+
+完整说明与素材出处见 [CREDITS.md](CREDITS.md)。本仓库不包含作者自制的私人立绘素材。
+
 ## 开发
 
 ```sh

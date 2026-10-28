@@ -54,6 +54,17 @@ dsh plugin --profile web remove gal-view
 > Note: the scene layout, imported images, fonts and reading progress live in your **browser** (localStorage / IndexedDB). Reinstalling or uninstalling the plugin does not lose them; clearing the browser's site data resets them.
 
 
+## Credits
+
+Built on top of these projects — thanks to their authors:
+
+- [Ayase34/gal-view](https://github.com/Ayase34/gal-view) — the original GAL view: plugin skeleton, tab injection, scene editor, typewriter, transcript mapping, and the default character art used here.
+- [RichardMLe/gal-view](https://github.com/RichardMLe/gal-view) — maintained fork; reference implementation for host data wiring.
+- [RichardMLe/dsh-deep-whale](https://github.com/RichardMLe/dsh-deep-whale) — Deep Whale mascot lineage.
+- [MeteorNOX/DeepSeek-Balance-Whale-Widget](https://github.com/MeteorNOX/DeepSeek-Balance-Whale-Widget) — whale widget design reference.
+
+See [CREDITS.md](CREDITS.md) for details. This repository does not ship the author's private character art.
+
 ## Development
 
 ```sh
